@@ -60,6 +60,25 @@
     pause_mid_upgrade: false
 
   tasks:
+    - name: Safety check — fail if task interruption is enabled via variable
+      ansible.builtin.fail:
+        msg: 'Task interruption is enabled; this playbook requires task interruption to be disabled. Set `task_interruption_enabled=false` or remove the variable and re-run.'
+      when: (task_interruption_enabled | default(false)) | bool
+
+    - name: Retrieve HA state (primary)
+      paloaltonetworks.panos.panos_op:
+        provider: '{{ primary }}'
+        cmd: 'show high-availability state'
+      register: ha_state
+      changed_when: false
+
+    - name: Assert pre-emption is disabled on HA pair
+      ansible.builtin.assert:
+        that:
+          - "(ha_state.stdout | from_json).response.result.group['local-info']['preemption'] | default('no') == 'no'"
+          - "(ha_state.stdout | from_json).response.result.group['peer-info']['preemption'] | default('no') == 'no'"
+        fail_msg: 'HA pre-emption is enabled on one or both devices; this playbook does not support pre-emption. Disable pre-emption and try again.'
+
     - name: Backup device config (primary)
       paloaltonetworks.panos.panos_op:
         provider: '{{ primary }}'
